@@ -95,6 +95,7 @@ end
 -----------------------------------------------------------------------------//
 o.wildcharm = ('\t'):byte()
 o.wildmenu = false -- Turn (on/)off the native commandline completion menu
+o.messagesopt = 'wait:1500,history:10000'
 o.wildmode = 'full' -- 'list:full' -- Shows a menu bar as opposed to an enormous list
 o.wildignorecase = true -- Ignore case when completing file names and directories
 opt.wildignore = {
