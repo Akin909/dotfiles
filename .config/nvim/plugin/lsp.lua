@@ -1,3 +1,4 @@
+---@diagnostic disable: param-type-mismatch
 if not as then return end
 
 local lsp, fs, fn, api, fmt = vim.lsp, vim.fs, vim.fn, vim.api, string.format
@@ -68,9 +69,9 @@ end
 
 local handler = lsp.handlers[M.textDocument_publishDiagnostics]
 ---@diagnostic disable-next-line: duplicate-set-field
-lsp.handlers[M.textDocument_publishDiagnostics] = function(err, result, ctx, config)
+lsp.handlers[M.textDocument_publishDiagnostics] = function(err, result, ctx)
   result.diagnostics = vim.tbl_map(show_related_locations, result.diagnostics)
-  handler(err, result, ctx, config)
+  handler(err, result, ctx)
 end
 
 -----------------------------------------------------------------------------//
@@ -81,41 +82,48 @@ end
 ---@param client vim.lsp.Client
 ---@param bufnr integer
 local function setup_mappings(client, bufnr)
-  local ts = { 'typescript', 'typescriptreact' }
-  local mappings = {
-    { 'n', ']c', function() diagnostic.goto_prev({ float = true }) end, desc = 'go to prev diagnostic' },
-    { 'n', '[c', function() diagnostic.goto_next({ float = true }) end, desc = 'go to next diagnostic' },
-    { { 'n', 'x' }, '<leader>ca', lsp.buf.code_action, desc = 'code action', capability = M.textDocument_codeAction },
-    { 'n', 'gd', lsp.buf.definition, desc = 'definition', capability = M.textDocument_definition, exclude = ts },
-    { 'n', 'gr', lsp.buf.references, desc = 'references', capability = M.textDocument_references },
-    { 'n', 'gI', lsp.buf.incoming_calls, desc = 'incoming calls', capability = M.textDocument_prepareCallHierarchy },
-    { 'n', 'gi', lsp.buf.implementation, desc = 'implementation', capability = M.textDocument_implementation },
-    -- stylua: ignore start
-    { 'n', '<leader>gd', lsp.buf.type_definition, desc = 'go to type definition', capability = M.textDocument_definition },
-    -- stylua: ignore end
-    { 'n', '<leader>cl', lsp.codelens.run, desc = 'run code lens', capability = M.textDocument_codeLens },
-    {
-      'n',
-      '<leader>ci',
-      function()
-        local enabled = lsp.inlay_hint.is_enabled(0)
-        lsp.inlay_hint.enable(0, not enabled)
-      end,
-      desc = 'inlay hints toggle',
-      M.textDocument_inlayHint,
-    },
-    { 'n', '<leader>ri', lsp.buf.rename, desc = 'rename', capability = M.textDocument_rename },
-    { 'n', '<leader>rm', rename_file, desc = 'rename file', capability = M.textDocument_rename },
-  }
+  if client.supports_method(M.textDocument_codeAction) then
+    map({ 'n', 'x' }, '<leader>ca', lsp.buf.code_action, { buffer = bufnr, desc = 'lsp: code action' })
+  end
 
-  vim.iter(mappings):each(function(m)
-    if
-      (not m.exclude or not vim.tbl_contains(m.exclude, vim.bo[bufnr].ft))
-      and (not m.capability or client.supports_method(m.capability))
-    then
-      map(m[1], m[2], m[3], { buffer = bufnr, desc = fmt('lsp: %s', m.desc) })
+  if client.supports_method(M.textDocument_definition) then
+    if not vim.tbl_contains({ 'typescript', 'typescriptreact' }, vim.bo[bufnr].ft) then
+      map('n', 'gd', lsp.buf.definition, { buffer = bufnr, desc = 'lsp: definition' })
     end
-  end)
+    map('n', '<leader>gd', lsp.buf.type_definition, { buffer = bufnr, desc = 'lsp: go to type definition' })
+  end
+
+  if client.supports_method(M.textDocument_references) then
+    map('n', 'gr', lsp.buf.references, { buffer = bufnr, desc = 'lsp: references' })
+  end
+
+  if client.supports_method(M.textDocument_implementation) then
+    map('n', 'gi', lsp.buf.implementation, { buffer = bufnr, desc = 'lsp: implementation' })
+  end
+
+  if client.supports_method(M.textDocument_hover) then
+    map('n', 'K', function() lsp.buf.hover({ border = border }) end, { buffer = bufnr, desc = 'lsp: hover' })
+  end
+
+  if client.supports_method(M.textDocument_prepareCallHierarchy) then
+    map('n', 'gI', lsp.buf.incoming_calls, { buffer = bufnr, desc = 'lsp: incoming calls' })
+  end
+
+  if client.supports_method(M.textDocument_codeLens) then
+    map('n', '<leader>cl', lsp.codelens.run, { buffer = bufnr, desc = 'lsp: run code lens' })
+  end
+
+  if client.supports_method(M.textDocument_rename) then
+    map('n', '<leader>ri', lsp.buf.rename, { buffer = bufnr, desc = 'lsp: rename' })
+    map('n', '<leader>rm', rename_file, { buffer = bufnr, desc = 'lsp: rename file' })
+  end
+
+  if client.supports_method(M.textDocument_inlayHint) then
+    map('n', '<leader>ci', function() lsp.inlay_hint.enable(not lsp.inlay_hint.is_enabled()) end, {
+      buffer = bufnr,
+      desc = 'lsp: inlay hints toggle',
+    })
+  end
 end
 
 -----------------------------------------------------------------------------//
@@ -171,9 +179,13 @@ local function setup_autocommands(client, buf)
     })
   end
 
-  if client.supports_method(M.textDocument_inlayHint, { bufnr = buf }) then
-    vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled())
+  local exclusions = { 'lua_ls' }
+  if client:supports_method('textDocument/foldingRange') and vim.tbl_contains(exclusions, client.name) then
+    vim.wo.foldmethod = 'expr'
+    vim.wo.foldexpr = 'v:lua.vim.lsp.foldexpr()'
   end
+
+  if client.supports_method(M.textDocument_inlayHint, { bufnr = buf }) then vim.lsp.inlay_hint.enable(true) end
 
   if client.supports_method(M.textDocument_documentHighlight) then
     augroup(('LspReferences%d'):format(buf), {
@@ -263,6 +275,10 @@ diagnostic.config({
   underline = true,
   update_in_insert = false,
   severity_sort = true,
+  jump = {
+    float = true,
+    severity = diagnostic.severity.WARN,
+  },
   signs = {
     severity = { min = S.WARN },
     text = {
@@ -300,8 +316,4 @@ diagnostic.config({
       return prefix, 'Diagnostic' .. level:gsub('^%l', string.upper)
     end,
   },
-})
-
-vim.lsp.handlers['textDocument/hover'] = vim.lsp.with(vim.lsp.handlers.hover, {
-  border = border,
 })
