@@ -15,7 +15,7 @@ local function general_overrides()
     { CursorLineNr = { bg = 'NONE' } },
     { iCursor = { bg = P.dark_blue } },
     { PmenuSbar = { link = 'Normal' } },
-    { Folded = { clear = true } },
+    { Folded = { bg = 'NONE', fg = { from = 'Normal', alter = -0.80 } } },
     --------------------------------------------//
     -- Floats
     ---------------------------------------------//
