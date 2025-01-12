@@ -38,7 +38,9 @@ return {
           window = { border = border },
         },
         list = {
-          selection = function(ctx) return ctx.mode == 'cmdline' and 'auto_insert' or 'preselect' end,
+          selection = {
+            auto_insert = function(ctx) return ctx.mode == 'cmdline' and false or true end,
+          },
         },
       },
     },
